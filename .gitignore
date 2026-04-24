@@ -1,4 +1,38 @@
-backend/venv
-backend/.env
-frontend/node_modules
-backend/__pycache__
+# ---- Python / FastAPI Backend ----
+backend/venv/
+backend/__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Databases
+*.sqlite3
+backend/interview.db
+
+# Environments
+.env
+.env.local
+.env.*
+
+# ---- Node.js / React Frontend ----
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+npm-debug.log*
+
+# ---- OS Generated Files ----
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+
+# ---- IDEs and Editors ----
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
