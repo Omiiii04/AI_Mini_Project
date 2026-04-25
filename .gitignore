@@ -36,3 +36,6 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
+
+
+backend/interview.db

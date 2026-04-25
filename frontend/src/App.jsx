@@ -1,8 +1,10 @@
 import { SetupScreen } from './components/setup/SetupScreen'
 import { ChatInterface } from './components/chat/ChatInterface'
 import { SummaryDashboard } from './components/summary/SummaryDashboard'
+import { AuthScreen } from './components/setup/AuthScreen'
 import { useInterview } from './hooks/useInterview'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Activity, LogOut } from 'lucide-react'
+import { useState, useEffect } from 'react'
 
 // Adjust standard styles for spin
 const injectSpinStyles = () => {
@@ -18,6 +20,18 @@ const injectSpinStyles = () => {
 injectSpinStyles();
 
 function App() {
+  const [token, setToken] = useState(localStorage.getItem('token'))
+  
+  const handleLogin = (newToken) => {
+     localStorage.setItem('token', newToken)
+     setToken(newToken)
+  }
+  
+  const handleLogout = () => {
+     localStorage.removeItem('token')
+     setToken(null)
+  }
+
   const {
     appState,
     domain,
@@ -26,19 +40,38 @@ function App() {
     latestFeedback,
     report,
     isLoading,
+    toastMessage,
+    questionStartTime,
+    hintsUsed,
     startInterview,
     sendMessage,
     endInterview,
-    restartInterview
+    restartInterview,
+    requestHint
   } = useInterview()
 
   return (
     <div className="app-container">
-      {appState === 'setup' && (
+      {token && (
+        <button className="btn-secondary" onClick={handleLogout} style={{ position: 'absolute', top: 20, right: 20, zIndex: 100, display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 12px' }}>
+          <LogOut size={16} /> Sign Out
+        </button>
+      )}
+      
+      {!token && (
+         <AuthScreen onLogin={handleLogin} />
+      )}
+      
+      {toastMessage && token && (
+        <div style={{ position: 'fixed', top: '20px', left: '50%', transform: 'translateX(-50%)', zIndex: 100, background: 'var(--accent-color)', color: '#fff', padding: '12px 24px', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', animation: 'fadeIn 0.3s ease', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <Activity size={16} className="animate-spin" /> {toastMessage}
+        </div>
+      )}
+      {appState === 'setup' && token && (
         <SetupScreen onStart={startInterview} isLoading={isLoading} />
       )}
       
-      {appState === 'chat' && (
+      {appState === 'chat' && token && (
         <ChatInterface 
           messages={messages} 
           latestFeedback={latestFeedback}
@@ -47,14 +80,17 @@ function App() {
           isLoading={isLoading}
           domain={domain}
           difficulty={difficulty}
+          questionStartTime={questionStartTime}
+          onRequestHint={requestHint}
+          hintsUsed={hintsUsed}
         />
       )}
       
-      {appState === 'summary' && report && (
+      {appState === 'summary' && report && token && (
         <SummaryDashboard report={report} onRestart={restartInterview} />
       )}
       
-      {isLoading && appState !== 'chat' && (
+      {isLoading && appState !== 'chat' && token && (
         <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 50, background: 'rgba(0,0,0,0.5)', padding: '20px', borderRadius: '50%' }}>
           <Loader2 className="animate-spin" size={48} color="var(--accent-color)" />
         </div>

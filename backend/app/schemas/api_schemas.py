@@ -11,6 +11,7 @@ class StartSessionResponse(BaseModel):
 class ChatRequest(BaseModel):
     session_id: str
     message: str
+    time_spent: int = 0
 
 class Evaluation(BaseModel):
     score: int = Field(description="Score out of 10")
