@@ -5,3 +5,4 @@ sqlalchemy
 google-genai
 python-dotenv
 psycopg2-binary
+PyJWT
