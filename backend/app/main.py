@@ -1,20 +1,34 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
 
 from app.core.db import engine, Base
 from app.api.routes import router as api_router
 from app.api.auth import router as auth_router
-from app.models.database_models import SessionDB, MessageDB, UserDB
+from app.models.database_models import SessionDB, MessageDB, UserDB  # noqa: F401
+from app.core.logger import get_logger
 
-# Create database tables
-Base.metadata.create_all(bind=engine)
+logger = get_logger(__name__)
 
-app = FastAPI(title="AI Interviewer API")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Create database tables
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    logger.info("Database tables initialized")
+    yield
 
-# Allow CORS for frontend
+app = FastAPI(title="AI Interviewer API", lifespan=lifespan)
+
+import os
+
+# Restrict CORS for frontend
+allowed_origins_raw = os.getenv("ALLOWED_ORIGINS", "http://localhost:80,http://localhost:5173,http://localhost:5174,http://localhost,http://127.0.0.1,http://127.0.0.1:5173,http://127.0.0.1:5174,http://127.0.0.1:80")
+allowed_origins = [origin.strip() for origin in allowed_origins_raw.split(",")]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

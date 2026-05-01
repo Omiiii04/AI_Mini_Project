@@ -15,7 +15,7 @@ class SessionDB(Base):
     domain = Column(String, index=True)
     difficulty = Column(String)
     hints_used = Column(Integer, default=0)
-    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None))
 
 class MessageDB(Base):
     __tablename__ = "messages"
@@ -23,4 +23,4 @@ class MessageDB(Base):
     session_id = Column(String, index=True)
     role = Column(String) # 'user', 'assistant', 'evaluation'
     content = Column(Text)
-    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None))

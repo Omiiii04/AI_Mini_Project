@@ -2,9 +2,11 @@ import { SetupScreen } from './components/setup/SetupScreen'
 import { ChatInterface } from './components/chat/ChatInterface'
 import { SummaryDashboard } from './components/summary/SummaryDashboard'
 import { AuthScreen } from './components/setup/AuthScreen'
+import { Navbar } from './components/layout/Navbar'
+import { LandingPage } from './components/layout/LandingPage'
 import { useInterview } from './hooks/useInterview'
-import { Loader2, Activity, LogOut } from 'lucide-react'
-import { useState } from 'react'
+import { Loader2, Activity } from 'lucide-react'
+import { useState, useEffect } from 'react'
 
 const injectSpinStyles = () => {
   if (document.getElementById('spin-style')) return
@@ -21,15 +23,30 @@ injectSpinStyles()
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('token'))
+  const [showAuth, setShowAuth] = useState(false)
+  const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light')
+
+  useEffect(() => {
+    localStorage.setItem('theme', theme)
+    if (theme === 'dark') {
+      document.body.classList.add('dark-theme')
+    } else {
+      document.body.classList.remove('dark-theme')
+    }
+  }, [theme])
+
+  const toggleTheme = () => setTheme(theme === 'light' ? 'dark' : 'light')
 
   const handleLogin = (newToken) => {
     localStorage.setItem('token', newToken)
     setToken(newToken)
+    setShowAuth(false)
   }
 
   const handleLogout = () => {
     localStorage.removeItem('token')
     setToken(null)
+    setShowAuth(false)
   }
 
   const {
@@ -51,80 +68,71 @@ function App() {
   } = useInterview()
 
   return (
-    <div className="app-container">
-      {/* Sign Out button — fixed to top-right, safe on all screen sizes */}
-      {token && (
-        <button
-          className="btn-secondary"
-          onClick={handleLogout}
-          style={{
-            position: 'fixed',
-            top: 14,
-            right: 14,
-            zIndex: 200,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            padding: '6px 11px',
-            fontSize: '13px',
-          }}
-        >
-          <LogOut size={14} /> Sign Out
-        </button>
-      )}
+    <>
+      <Navbar theme={theme} toggleTheme={toggleTheme} token={token} onLogout={handleLogout} />
+      
+      <div className={`app-container ${appState === 'chat' ? 'app-container-fluid' : ''}`}>
+        {/* Toast notification */}
+        {toastMessage && token && (
+          <div style={{
+            position: 'fixed', top: '80px', left: '50%', transform: 'translateX(-50%)',
+            zIndex: 300, background: 'var(--accent-color)', color: '#fff',
+            padding: '10px 20px', borderRadius: '8px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
+            animation: 'fadeIn 0.3s ease',
+            display: 'flex', alignItems: 'center', gap: '8px',
+            fontSize: '14px', whiteSpace: 'nowrap',
+            maxWidth: 'calc(100vw - 40px)',
+          }}>
+            <Activity size={14} className="animate-spin" /> {toastMessage}
+          </div>
+        )}
 
-      {!token && <AuthScreen onLogin={handleLogin} />}
+        {!token && !showAuth && <LandingPage onGetStarted={() => setShowAuth(true)} />}
+        
+        {!token && showAuth && (
+           <div style={{ marginTop: '40px' }}>
+             <AuthScreen onLogin={handleLogin} onBack={() => setShowAuth(false)} />
+           </div>
+        )}
 
-      {/* Toast notification */}
-      {toastMessage && token && (
-        <div style={{
-          position: 'fixed', top: '16px', left: '50%', transform: 'translateX(-50%)',
-          zIndex: 300, background: 'var(--accent-color)', color: '#fff',
-          padding: '10px 20px', borderRadius: '8px',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
-          animation: 'fadeIn 0.3s ease',
-          display: 'flex', alignItems: 'center', gap: '8px',
-          fontSize: '14px', whiteSpace: 'nowrap',
-          maxWidth: 'calc(100vw - 40px)',
-        }}>
-          <Activity size={14} className="animate-spin" /> {toastMessage}
-        </div>
-      )}
+        {appState === 'setup' && token && (
+          <SetupScreen onStart={startInterview} isLoading={isLoading} />
+        )}
 
-      {appState === 'setup' && token && (
-        <SetupScreen onStart={startInterview} isLoading={isLoading} />
-      )}
+        {appState === 'chat' && token && (
+          <ChatInterface
+            messages={messages}
+            latestFeedback={latestFeedback}
+            onSendMessage={sendMessage}
+            onEndInterview={endInterview}
+            isLoading={isLoading}
+            domain={domain}
+            difficulty={difficulty}
+            questionStartTime={questionStartTime}
+            onRequestHint={requestHint}
+            hintsUsed={hintsUsed}
+          />
+        )}
 
-      {appState === 'chat' && token && (
-        <ChatInterface
-          messages={messages}
-          latestFeedback={latestFeedback}
-          onSendMessage={sendMessage}
-          onEndInterview={endInterview}
-          isLoading={isLoading}
-          domain={domain}
-          difficulty={difficulty}
-          questionStartTime={questionStartTime}
-          onRequestHint={requestHint}
-          hintsUsed={hintsUsed}
-        />
-      )}
+        {appState === 'summary' && report && token && (
+          <SummaryDashboard report={report} onRestart={restartInterview} />
+        )}
 
-      {appState === 'summary' && report && token && (
-        <SummaryDashboard report={report} onRestart={restartInterview} />
-      )}
-
-      {isLoading && appState !== 'chat' && token && (
-        <div style={{
-          position: 'fixed', top: '50%', left: '50%',
-          transform: 'translate(-50%, -50%)',
-          zIndex: 400, background: 'rgba(0,0,0,0.6)',
-          padding: '20px', borderRadius: '50%'
-        }}>
-          <Loader2 className="animate-spin" size={44} color="var(--accent-color)" />
-        </div>
-      )}
-    </div>
+        {isLoading && appState !== 'chat' && (
+          <div style={{
+            position: 'fixed', top: '50%', left: '50%',
+            transform: 'translate(-50%, -50%)',
+            zIndex: 400, background: 'var(--panel-bg-alpha)',
+            backdropFilter: 'blur(4px)',
+            padding: '24px', borderRadius: '50%',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.2)'
+          }}>
+            <Loader2 className="animate-spin" size={44} color="var(--accent-color)" />
+          </div>
+        )}
+      </div>
+    </>
   )
 }
 

@@ -2,42 +2,123 @@
 
 An intelligent, full-stack mock interview platform. This application allows users to simulate technical and behavioral interviews, receive real-time granular feedback on correctness and clarity via Google's Gemini AI, and review a comprehensive post-interview report.
 
+The project recently underwent a major architecture overhaul to achieve **production-grade asynchronous performance, enhanced security, and containerization.**
+
 ---
 
 ## 🏗 Architecture & Project Structure
 
-The project was recently upgraded to a **production-grade decoupled architecture**:
+The platform uses a decoupled client-server architecture:
 
 ### Backend (Python + FastAPI)
-Located in `/backend`. Uses a modular pattern optimized for scalability.
-*   **`app/api/routes.py`**: The REST API endpoints (`/start`, `/chat`, and `/report`).
-*   **`app/core/db.py`**: SQLite database initialization and session management.
-*   **`app/models` & `app/schemas`**: Strict separation between SQLAlchemy ORM models (database) and Pydantic schemas (JSON validation).
-*   **`app/services/llm_service.py`**: **Core Logic.** All AI prompting, interactions, and fallback error handling occur here, interacting with `gemini-3-flash-preview` via the `google-genai` SDK.
+Located in `/backend`. Uses a modular, fully asynchronous pattern optimized for high concurrency.
+*   **`app/api/routes.py`**: The REST API endpoints (`/start`, `/chat`, and `/report`). Features Server-Sent Events (SSE) for streaming AI responses.
+*   **`app/core/db.py`**: PostgreSQL database initialization and asynchronous session management (`asyncpg`).
+*   **`app/models` & `app/schemas`**: Strict separation between SQLAlchemy ORM models and Pydantic schemas (with strict input validation to prevent DoS attacks).
+*   **`app/services/llm_service.py`**: **Core Logic.** Asynchronous AI prompting, streaming, and JSON repair, interacting with `gemini-3-flash-preview` via the `google-genai` SDK.
 
 ### Frontend (React + Vite)
 Located in `/frontend`. Uses a cleanly structured component tree.
 *   **`src/components/`**: Presentational React components split into domains (`/chat`, `/setup`, `/summary`).
-*   **`src/hooks/useInterview.js`**: **Core Logic.** A custom React Hook that abstracts away all API fetching and state management from the UI.
+*   **`src/hooks/useInterview.js`**: **Core Logic.** A custom React Hook that abstracts away API fetching, streaming text parsing, and state management.
 *   **`src/styles/index.css`**: A premium, global styling system utilizing glassmorphism, dark mode variables, and micro-animations.
 
 ---
 
-## 🚀 Local Development Guide
+## 💡 Important Code Snippets
 
-You need two terminals to run this application locally.
+### 1. Robust Async LLM Streaming (`llm_service.py`)
+To prevent the application from freezing under load, the AI service uses asynchronous generators to stream chunks to the client without blocking the worker threads.
+
+```python
+@staticmethod
+async def evaluate_and_next_question_stream(domain: str, difficulty: str, history: list[dict], user_answer: str, time_spent: int = 0, hints_used: int = 0):
+    # ... system prompt construction ...
+    try:
+        response_stream = await client.aio.models.generate_content_stream(
+            model=MODEL_ID,
+            contents=contents,
+            config=types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                response_mime_type="application/json"
+            )
+        )
+        async for chunk in response_stream:
+            if chunk.text:
+                yield chunk.text
+    except Exception as e:
+        logger.error(f"API Error during evaluate_and_next_question_stream: {e}")
+```
+
+### 2. Secure Async Database Setup (`db.py`)
+The platform uses SQLAlchemy 2.0 with the `asyncpg` driver to ensure high-performance concurrent database transactions.
+
+```python
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.orm import sessionmaker
+
+engine = create_async_engine(
+    SQLALCHEMY_DATABASE_URL, connect_args=connect_args, echo=False
+)
+
+SessionLocal = sessionmaker(
+    bind=engine,
+    class_=AsyncSession,
+    autocommit=False,
+    autoflush=False
+)
+
+async def get_db():
+    async with SessionLocal() as db:
+        yield db
+```
+
+### 3. Resilient JSON Parsing
+LLMs occasionally hallucinate markdown blocks or trailing commas when requested to return JSON. The application uses `json_repair` to robustly catch and fix these errors, preventing silent data loss.
+
+```python
+try:
+    # Use json_repair here so streaming failures resolve smoothly
+    result = json_repair.loads(full_json)
+    
+    # Save the parsed evaluation and question directly to the database
+    async with SessionLocal() as bg_db:
+        # ... db commit logic ...
+except Exception as e:
+    logger.error(f"Error persisting stream to storage: {e}")
+```
+
+---
+
+## 🐳 Running with Docker (Recommended)
+
+The easiest way to run the application (FastAPI + Vite) is via Docker Compose. The database is hosted externally (e.g. Render).
+
+1. Ensure Docker Desktop is running.
+2. In the `backend` folder, duplicate `.env.example` and rename it to `.env`. Fill in your secrets:
+   ```env
+   GEMINI_API_KEY=your_gemini_api_key_here
+   JWT_SECRET_KEY=a_secure_random_string
+
+   DATABASE_URL=postgresql+asyncpg://user:password@hostname.oregon-postgres.render.com/dbname
+   ```
+3. From the root directory containing `docker-compose.yml`, run:
+   ```bash
+   docker-compose up -d --build
+   ```
+4. Access the application:
+   - **Frontend UI**: `http://localhost:80`
+   - **Backend Swagger Docs**: `http://localhost:8000/docs`
+
+---
+
+## 🚀 Local Development Guide (Without Docker)
+
+You need two terminals to run this application locally without Docker.
 
 ### 1. Backend Server
 ```bash
 cd backend
-
-# Create environment variables file
-# Add: GEMINI_API_KEY="your_actual_api_key_here"
-# Add: DATABASE_URL="postgresql://postgres:postgres@localhost:5432/interview_db"
-copy .env.example .env
-
-# Start the PostgreSQL Database Server via Docker
-docker-compose up -d
 
 # Create and activate virtual environment
 python -m venv venv
@@ -46,7 +127,10 @@ python -m venv venv
 # Install dependencies
 pip install -r requirements.txt
 
-# Run the FastAPI server in development mode (auto-reload on save)
+# Ensure your .env file has the correct Render DATABASE_URL 
+# DATABASE_URL=postgresql+asyncpg://user:password@hostname.render.com/dbname
+
+# Run the FastAPI server in development mode
 uvicorn app.main:app --reload
 ```
 *The API will be available at `http://localhost:8000`*
@@ -55,7 +139,7 @@ uvicorn app.main:app --reload
 ```bash
 cd frontend
 
-# Install dependencies Node Modules
+# Install Node modules
 npm install
 
 # Start the Vite development server
@@ -65,45 +149,8 @@ npm run dev
 
 ---
 
-## 🛠 Making Changes in the Future
-
-The architecture is designed to be highly extensible. Here is how you should approach modifying the app:
-
-### Changing the Frontend UI
-Because all app state logic relies on the `useInterview.js` hook, you can completely gut and redesign the UI without breaking the application!
-1.  Navigate to `frontend/src/components/`. 
-2.  You can redesign `SetupScreen.jsx` or `ChatInterface.jsx`. 
-3.  As long as your new components call `sendMessage(text)` or `startInterview(domain, difficulty)` from the hook, the app will continue to work perfectly.
-4.  **Styling**: If you want to switch to a library like TailwindCSS or Material-UI later, simply delete `/styles/index.css`, replace it with your library imports, and update the `className`s in the components.
-
-### Modifying the AI Prompts
-If the AI is grading too harshly, or you want to add new evaluation metrics (e.g. Tone, Speed):
-1.  Open `backend/app/schemas/api_schemas.py` and add the new metric field to `Evaluation`.
-2.  Open `backend/app/services/llm_service.py`. 
-3.  Modify the `system_prompt` strings to instruct the AI on exactly how to grade the new metric.
-
----
-
-## ☁️ Cloud Deployment Guide
-
-The code includes `Dockerfile` implementations for both the frontend and backend, making it natively compatible with modern cloud hosts.
-
-### Deploying the Backend
-Since the backend uses an SQLite file natively, for a true scalable production environment you may want to swap the `SQLALCHEMY_DATABASE_URL` in `app/core/db.py` to a managed PostgreSQL database URL (like Supabase or AWS RDS).
-*   **Google Cloud Run / Render / Railway**: 
-    1. Connect your GitHub repository to the service.
-    2. Set the Root Directory to `/backend`.
-    3. The service will automatically detect the `Dockerfile` and build the container.
-    4. **Crucial**: Make sure you inject your `GEMINI_API_KEY` into the deployment platform's Environment Variables settings!
-
-### Deploying the Frontend
-The frontend is built using Vite, making it perfect for static site hosts.
-*   **Vercel / Netlify**: 
-    1. Connect your repository.
-    2. Set the Framework Preset to `Vite`.
-    3. Set the Root Directory to `/frontend`.
-    4. **Important**: Before deploying, you MUST change the `API_BASE` hardcoded variable in `frontend/src/services/api.js` from `localhost:8000` to the actual public URL of your newly deployed Backend!
-
----
-
-*Built with FastAPI, React, and Google Gemini Integration.*
+## 🔐 Security Features
+- **Strict CORS**: The API explicitly rejects cross-origin credentialed requests unless they originate from allowed domains.
+- **JWT Authentication**: Secure stateless token validation using `bcrypt` and HS256 signatures.
+- **Payload Constraints**: Max-length validations enforced via Pydantic on incoming prompts to prevent Token Exhaustion DoS attacks.
+- **Dependency Locking**: Exact dependency versions are pinned in `requirements.txt` to prevent supply chain breaks.

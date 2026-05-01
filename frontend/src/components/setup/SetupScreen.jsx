@@ -5,6 +5,7 @@ import { History } from 'lucide-react'
 export function SetupScreen({ onStart, isLoading }) {
   const [domain, setDomain] = useState('Data Structures & Algorithms')
   const [difficulty, setDifficulty] = useState('Intermediate')
+  const [language, setLanguage] = useState('English')
   const [history, setHistory] = useState([])
   const [showHistory, setShowHistory] = useState(false)
 
@@ -39,12 +40,30 @@ export function SetupScreen({ onStart, isLoading }) {
             <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '14px' }}>Configure your mock interview session</p>
           </div>
 
+          <label className="label">Interview Language</label>
+          <select
+            className="select-field"
+            value={language}
+            onChange={(e) => setLanguage(e.target.value)}
+            disabled={isLoading}
+            style={{ marginBottom: '16px' }}
+          >
+            <option>English</option>
+            <option>Spanish (Español)</option>
+            <option>French (Français)</option>
+            <option>German (Deutsch)</option>
+            <option>Hindi (हिंदी)</option>
+            <option>Chinese (中文)</option>
+            <option>Japanese (日本語)</option>
+          </select>
+
           <label className="label">Interview Domain</label>
           <select
             className="select-field"
             value={domain}
             onChange={(e) => setDomain(e.target.value)}
             disabled={isLoading}
+            style={{ marginBottom: '16px' }}
           >
             <option>Data Structures &amp; Algorithms</option>
             <option>Database Management Systems (DBMS)</option>
@@ -69,7 +88,7 @@ export function SetupScreen({ onStart, isLoading }) {
           <button
             className="btn-primary"
             style={{ width: '100%' }}
-            onClick={() => onStart(domain, difficulty)}
+            onClick={() => onStart(domain, difficulty, language)}
             disabled={isLoading}
           >
             {isLoading ? 'Preparing Session...' : 'Start Interview'}

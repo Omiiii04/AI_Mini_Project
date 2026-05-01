@@ -14,12 +14,12 @@ export function useInterview() {
   const [questionStartTime, setQuestionStartTime] = useState(null)
   const [hintsUsed, setHintsUsed] = useState(0)
 
-  const startInterview = async (selectedDomain, selectedDifficulty) => {
+  const startInterview = async (selectedDomain, selectedDifficulty, selectedLanguage) => {
     setIsLoading(true)
     try {
       setDomain(selectedDomain)
       setDifficulty(selectedDifficulty)
-      const data = await api.startSession(selectedDomain, selectedDifficulty)
+      const data = await api.startSession(selectedDomain, selectedDifficulty, selectedLanguage)
       
       setSessionId(data.session_id)
       setMessages([{ role: 'assistant', content: data.first_question }])
@@ -48,14 +48,47 @@ export function useInterview() {
     try {
       const fullJsonStr = await api.sendChatMessageStream(sessionId, message, timeSpentSeconds, (accumulatedJson) => {
          setIsLoading(false) // stop global spinner once stream starts
-         const extractMatches = accumulatedJson.match(/"next_question"\s*:\s*"([^]*)/)
+         
+         // Robust partial JSON extraction for "next_question"
          let visibleText = "..."
-         if (extractMatches) {
-            visibleText = extractMatches[1]
-            visibleText = visibleText.replace(/",?\s*"evaluation"[^]*$/, '')
-            visibleText = visibleText.replace(/\\n/g, '\n')
-            visibleText = visibleText.replace(/\\"/g, '"')
+         try {
+            // Find the start of the next_question value
+            const keySearch = '"next_question":'
+            const startIndex = accumulatedJson.indexOf(keySearch)
+            
+            if (startIndex !== -1) {
+                let valStart = accumulatedJson.indexOf('"', startIndex + keySearch.length)
+                if (valStart !== -1) {
+                    valStart += 1 // skip the opening quote
+                    
+                    // Find the end quote, taking care of escaped quotes
+                    let valEnd = -1
+                    for (let i = valStart; i < accumulatedJson.length; i++) {
+                        if (accumulatedJson[i] === '"' && accumulatedJson[i-1] !== '\\') {
+                            valEnd = i
+                            break
+                        }
+                    }
+                    
+                    if (valEnd !== -1) {
+                        visibleText = accumulatedJson.substring(valStart, valEnd)
+                    } else {
+                        // Still streaming the value
+                        visibleText = accumulatedJson.substring(valStart)
+                    }
+                    
+                    // Unescape characters
+                    visibleText = visibleText
+                        .replace(/\\n/g, '\n')
+                        .replace(/\\"/g, '"')
+                        .replace(/\\t/g, '\t')
+                        .replace(/\\\\/g, '\\')
+                }
+            }
+         } catch (e) {
+            console.warn("Partial parse error", e)
          }
+         
          setMessages(prev => prev.map(m => m.id === tempId ? { ...m, content: visibleText } : m))
       }, (msg) => setToastMessage(msg))
       

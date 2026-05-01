@@ -1,6 +1,5 @@
-import axios from 'axios'
-
-const API_BASE = 'http://127.0.0.1:8000/api/session'
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
+const API_BASE = `${API_BASE_URL}/api/session`
 
 const getHeaders = () => {
   const token = localStorage.getItem('token')
@@ -8,9 +7,14 @@ const getHeaders = () => {
 }
 
 const api = {
-  startSession: async (domain, difficulty) => {
-    const res = await axios.post(`${API_BASE}/start`, { domain, difficulty }, { headers: getHeaders() })
-    return res.data
+  startSession: async (domain, difficulty, language) => {
+    const res = await fetch(`${API_BASE}/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getHeaders() },
+      body: JSON.stringify({ domain, difficulty, language })
+    })
+    if (!res.ok) throw new Error('Failed to start session')
+    return res.json()
   },
   
   sendChatMessageStream: async (sessionId, message, timeSpentSeconds, onChunk, onRetry = null) => {
@@ -41,7 +45,7 @@ const api = {
                  const j = JSON.parse(line.substring(6))
                  fullText += j.chunk
                  onChunk(fullText)
-               } catch (e) {
+               } catch {
                  // partial line chunk parsing failure safe ignore
                }
             }

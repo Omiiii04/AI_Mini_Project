@@ -1,39 +1,46 @@
 import os
 import json
+import json_repair
 from google import genai
 from google.genai import types
 from dotenv import load_dotenv
+from app.core.logger import get_logger
 
 load_dotenv()
 
+logger = get_logger(__name__)
+
 # We will initialize the client. It expects GEMINI_API_KEY in the environment.
 try:
-    client = genai.Client()
+    api_key = os.getenv("GEMINI_API_KEY")
+    client = genai.Client(api_key=api_key) if api_key else None
+    if not client:
+        logger.error("GEMINI_API_KEY is not set.")
 except Exception as e:
     client = None
-    print(f"Failed to initialize GenAI client: {e}. Make sure GEMINI_API_KEY is set.")
+    logger.error(f"Failed to initialize GenAI client: {e}. Make sure GEMINI_API_KEY is set.")
 
 MODEL_ID = "gemini-3-flash-preview"
 
 class LLMService:
     @staticmethod
-    def generate_first_question(domain: str, difficulty: str) -> str:
+    async def generate_first_question(domain: str, difficulty: str) -> str:
         if not client:
             return f"Mock Question: What is a key concept in {domain}?"
             
         prompt = f"You are an expert technical interviewer in {domain}. Generate a {difficulty} level interview question to start the interview. Return ONLY the question text without any markdown formatting or prefix."
         try:
-            response = client.models.generate_content(
+            response = await client.aio.models.generate_content(
                 model=MODEL_ID,
                 contents=prompt
             )
             return response.text.strip()
         except Exception as e:
-            print(f"API Error during generate_first_question: {e}")
+            logger.error(f"API Error during generate_first_question: {e}")
             return f"Error: The AI model is currently overloaded. Please wait a minute and try again. [Fallback: Explain the basics of {domain}.]"
 
     @staticmethod
-    def evaluate_and_next_question(domain: str, difficulty: str, history: list[dict], user_answer: str) -> dict:
+    async def evaluate_and_next_question(domain: str, difficulty: str, history: list[dict], user_answer: str) -> dict:
         if not client:
             return {
                 "next_question": "Mock Next Question: Can you elaborate on that?",
@@ -73,7 +80,7 @@ You MUST return a JSON object with this exact schema:
         contents.append(types.Content(role="user", parts=[types.Part.from_text(text=user_answer)]))
         
         try:
-            response = client.models.generate_content(
+            response = await client.aio.models.generate_content(
                 model=MODEL_ID,
                 contents=contents,
                 config=types.GenerateContentConfig(
@@ -82,7 +89,7 @@ You MUST return a JSON object with this exact schema:
                 )
             )
         except Exception as e:
-            print(f"API Error during evaluate_and_next_question: {e}")
+            logger.error(f"API Error during evaluate_and_next_question: {e}")
             return {
                 "next_question": "My AI brain just got an overload of requests from Google's servers. Could you wait a few seconds and try answering again?",
                 "evaluation": {
@@ -96,9 +103,9 @@ You MUST return a JSON object with this exact schema:
             }
         
         try:
-            return json.loads(response.text)
-        except json.JSONDecodeError:
-            print("Failed to decode JSON from LLM response:", response.text)
+            return json_repair.loads(response.text)
+        except Exception as e:
+            logger.error(f"Failed to decode JSON from LLM response: {response.text} - {e}")
             return {
                 "next_question": "Sorry, there was an error parsing my response. Let's move onto the next topic.",
                 "evaluation": {
@@ -112,7 +119,7 @@ You MUST return a JSON object with this exact schema:
             }
 
     @staticmethod
-    def evaluate_and_next_question_stream(domain: str, difficulty: str, history: list[dict], user_answer: str, time_spent: int = 0, hints_used: int = 0):
+    async def evaluate_and_next_question_stream(domain: str, difficulty: str, history: list[dict], user_answer: str, time_spent: int = 0, hints_used: int = 0):
         if not client:
             yield '{"next_question": "Mock streaming question?", "evaluation": {"score": 8, "correctness": "Mock.", "completeness": "Mock.", "clarity": "Mock.", "strengths": "Mock.", "weaknesses": "Mock."}}'
             return
@@ -153,7 +160,7 @@ You MUST return a JSON object with this exact schema:
         contents.append(types.Content(role="user", parts=[types.Part.from_text(text=user_answer)]))
 
         try:
-            response_stream = client.models.generate_content_stream(
+            response_stream = await client.aio.models.generate_content_stream(
                 model=MODEL_ID,
                 contents=contents,
                 config=types.GenerateContentConfig(
@@ -161,11 +168,11 @@ You MUST return a JSON object with this exact schema:
                     response_mime_type="application/json"
                 )
             )
-            for chunk in response_stream:
+            async for chunk in response_stream:
                 if chunk.text:
                     yield chunk.text
         except Exception as e:
-            print(f"API Error during evaluate_and_next_question_stream: {e}")
+            logger.error(f"API Error during evaluate_and_next_question_stream: {e}")
             error_msg = json.dumps({
                 "next_question": "Error connecting to AI.",
                 "evaluation": {"score": 0, "correctness": "Error", "completeness": "Error", "clarity": "Error", "strengths": "Error", "weaknesses": "Error"}
@@ -173,7 +180,7 @@ You MUST return a JSON object with this exact schema:
             yield error_msg
 
     @staticmethod
-    def generate_report(domain: str, difficulty: str, history: list[dict], all_evals: list[dict]) -> dict:
+    async def generate_report(domain: str, difficulty: str, history: list[dict], all_evals: list[dict]) -> dict:
         if not client:
             return {
                 "total_score": 80,
@@ -200,7 +207,7 @@ You MUST return a JSON object with this exact schema:
         prompt = f"Here are the chronological evaluations of the candidate's answers:\n{evals_text}\n\nPlease generate the final report JSON based on these."
         
         try:
-            response = client.models.generate_content(
+            response = await client.aio.models.generate_content(
                 model=MODEL_ID,
                 contents=prompt,
                 config=types.GenerateContentConfig(
@@ -209,7 +216,7 @@ You MUST return a JSON object with this exact schema:
                 )
             )
         except Exception as e:
-            print(f"API Error during generate_report: {e}")
+            logger.error(f"API Error during generate_report: {e}")
             return {
                 "total_score": 0,
                 "average_score": 0.0,
@@ -219,8 +226,9 @@ You MUST return a JSON object with this exact schema:
             }
         
         try:
-            return json.loads(response.text)
-        except json.JSONDecodeError:
+            return json_repair.loads(response.text)
+        except Exception as e:
+            logger.error(f"Failed to parse report JSON: {e}")
             return {
                 "total_score": 0,
                 "average_score": 0.0,
@@ -230,7 +238,7 @@ You MUST return a JSON object with this exact schema:
             }
             
     @staticmethod
-    def generate_hint(domain: str, difficulty: str, history: list[dict], hints_used: int) -> str:
+    async def generate_hint(domain: str, difficulty: str, history: list[dict], hints_used: int) -> str:
         if not client:
             return f"Mock Hint: Consider X and Y for {domain}."
 
@@ -254,7 +262,7 @@ Keep your hint concise (1-3 sentences maximum). Return ONLY the hint text. Do no
             contents.append(types.Content(role=role, parts=[types.Part.from_text(text=m["content"])]))
 
         try:
-            response = client.models.generate_content(
+            response = await client.aio.models.generate_content(
                 model=MODEL_ID,
                 contents=contents,
                 config=types.GenerateContentConfig(
@@ -263,6 +271,5 @@ Keep your hint concise (1-3 sentences maximum). Return ONLY the hint text. Do no
             )
             return response.text.strip()
         except Exception as e:
-            print(f"API Error during generate_hint: {e}")
+            logger.error(f"API Error during generate_hint: {e}")
             return "Hint unavailable due to system overload."
-

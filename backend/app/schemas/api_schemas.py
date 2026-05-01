@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 class StartSessionRequest(BaseModel):
     domain: str = Field(description="e.g. Data Structures & Algorithms, DBMS, HR")
     difficulty: str = Field(description="e.g. Beginner, Intermediate, Advanced")
+    language: str = Field(default="English", description="Language of the interview")
 
 class StartSessionResponse(BaseModel):
     session_id: str
@@ -10,7 +11,7 @@ class StartSessionResponse(BaseModel):
 
 class ChatRequest(BaseModel):
     session_id: str
-    message: str
+    message: str = Field(max_length=5000)
     time_spent: int = 0
 
 class Evaluation(BaseModel):

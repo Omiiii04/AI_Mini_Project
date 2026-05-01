@@ -1,6 +1,9 @@
 import { useState } from 'react'
+import { ArrowLeft } from 'lucide-react'
 
-export function AuthScreen({ onLogin }) {
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
+
+export function AuthScreen({ onLogin, onBack }) {
   const [isLogin, setIsLogin] = useState(true)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -11,17 +14,17 @@ export function AuthScreen({ onLogin }) {
     e.preventDefault()
     setIsLoading(true)
     setError(null)
-    
+
     try {
       const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register'
-      
+
       let response;
       if (isLogin) {
           const formData = new URLSearchParams()
           formData.append('username', username)
           formData.append('password', password)
-          
-          response = await fetch(`http://127.0.0.1:8000${endpoint}`, {
+
+          response = await fetch(`${API_BASE_URL}${endpoint}`, {
             method: 'POST',
             body: formData,
             headers: {
@@ -29,7 +32,7 @@ export function AuthScreen({ onLogin }) {
             }
           })
       } else {
-          response = await fetch(`http://127.0.0.1:8000${endpoint}`, {
+          response = await fetch(`${API_BASE_URL}${endpoint}`, {
             method: 'POST',
             body: JSON.stringify({ username, password }),
             headers: {
@@ -37,7 +40,6 @@ export function AuthScreen({ onLogin }) {
             }
           })
       }
-
       const data = await response.json()
 
       if (!response.ok) {
@@ -53,8 +55,17 @@ export function AuthScreen({ onLogin }) {
   }
 
   return (
-    <div className="glass-panel" style={{ maxWidth: '400px', margin: 'auto', width: '100%' }}>
-      <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+    <div className="glass-panel" style={{ maxWidth: '400px', margin: 'auto', width: '100%', position: 'relative' }}>
+      {onBack && (
+        <button onClick={onBack} style={{
+          position: 'absolute', top: '16px', left: '16px',
+          background: 'none', border: 'none', color: 'var(--text-muted)',
+          cursor: 'pointer', display: 'flex', alignItems: 'center'
+        }}>
+          <ArrowLeft size={20} />
+        </button>
+      )}
+      <div style={{ textAlign: 'center', marginBottom: '32px', marginTop: onBack ? '24px' : '0' }}>
         <h1 style={{ margin: '0 0 8px 0', fontSize: '28px' }}>AI Interview Prep</h1>
         <p style={{ margin: 0, color: 'var(--text-muted)' }}>
           {isLogin ? 'Sign in to access your dashboard' : 'Create an account to track your progress'}
