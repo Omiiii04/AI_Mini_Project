@@ -1,156 +1,172 @@
-# AI Interview Preparation Chatbot 🤖🎓
+# AI Interview Preparation Chatbot
 
-An intelligent, full-stack mock interview platform. This application allows users to simulate technical and behavioral interviews, receive real-time granular feedback on correctness and clarity via Google's Gemini AI, and review a comprehensive post-interview report.
+This is a full-stack mock interview application. You can choose an interview topic and difficulty level, answer questions in a chat interface, ask for hints, and receive feedback after each answer. At the end of the interview, the application creates a performance report that can be downloaded as a PDF.
 
-The project recently underwent a major architecture overhaul to achieve **production-grade asynchronous performance, enhanced security, and containerization.**
+The application uses Google Gemini to generate questions and feedback. If no Gemini API key is provided, the backend returns mock responses so the basic flow can still be tested.
 
----
+## What you can do
 
-## 🏗 Architecture & Project Structure
+- Create an account and sign in
+- Choose an interview topic, language, and difficulty level
+- Answer questions using text or speech input
+- Use the built-in code editor for programming answers
+- Ask for hints when you get stuck
+- Receive feedback on correctness, completeness, and clarity
+- Review previous interview sessions
+- Download the final report as a PDF
+- Switch between light and dark themes
 
-The platform uses a decoupled client-server architecture:
+## Technology used
 
-### Backend (Python + FastAPI)
-Located in `/backend`. Uses a modular, fully asynchronous pattern optimized for high concurrency.
-*   **`app/api/routes.py`**: The REST API endpoints (`/start`, `/chat`, and `/report`). Features Server-Sent Events (SSE) for streaming AI responses.
-*   **`app/core/db.py`**: PostgreSQL database initialization and asynchronous session management (`asyncpg`).
-*   **`app/models` & `app/schemas`**: Strict separation between SQLAlchemy ORM models and Pydantic schemas (with strict input validation to prevent DoS attacks).
-*   **`app/services/llm_service.py`**: **Core Logic.** Asynchronous AI prompting, streaming, and JSON repair, interacting with `gemini-3-flash-preview` via the `google-genai` SDK.
+The backend is built with FastAPI, SQLAlchemy, and Pydantic. It uses JWT tokens for authentication and supports SQLite for local development or PostgreSQL for deployment.
 
-### Frontend (React + Vite)
-Located in `/frontend`. Uses a cleanly structured component tree.
-*   **`src/components/`**: Presentational React components split into domains (`/chat`, `/setup`, `/summary`).
-*   **`src/hooks/useInterview.js`**: **Core Logic.** A custom React Hook that abstracts away API fetching, streaming text parsing, and state management.
-*   **`src/styles/index.css`**: A premium, global styling system utilizing glassmorphism, dark mode variables, and micro-animations.
+The frontend is built with React and Vite. It also uses Monaco Editor for code input, React Markdown for formatted responses, and html2pdf.js for PDF exports.
 
----
+## Project structure
 
-## 💡 Important Code Snippets
-
-### 1. Robust Async LLM Streaming (`llm_service.py`)
-To prevent the application from freezing under load, the AI service uses asynchronous generators to stream chunks to the client without blocking the worker threads.
-
-```python
-@staticmethod
-async def evaluate_and_next_question_stream(domain: str, difficulty: str, history: list[dict], user_answer: str, time_spent: int = 0, hints_used: int = 0):
-    # ... system prompt construction ...
-    try:
-        response_stream = await client.aio.models.generate_content_stream(
-            model=MODEL_ID,
-            contents=contents,
-            config=types.GenerateContentConfig(
-                system_instruction=system_prompt,
-                response_mime_type="application/json"
-            )
-        )
-        async for chunk in response_stream:
-            if chunk.text:
-                yield chunk.text
-    except Exception as e:
-        logger.error(f"API Error during evaluate_and_next_question_stream: {e}")
+```text
+AI_Mini_Project/
+|-- backend/
+|   |-- app/
+|   |   |-- api/          # Authentication and interview routes
+|   |   |-- core/         # Database, security, logging, and rate limiting
+|   |   |-- models/       # SQLAlchemy database models
+|   |   |-- schemas/      # Request and response models
+|   |   `-- services/     # Gemini integration
+|   |-- .env.example
+|   `-- requirements.txt
+|-- frontend/
+|   |-- public/
+|   |-- src/
+|   |   |-- components/   # Screens and reusable UI components
+|   |   |-- hooks/        # Interview state and streaming logic
+|   |   |-- services/     # Backend API calls
+|   |   `-- styles/       # Global styles
+|   |-- package.json
+|   `-- vite.config.js
+`-- README.md
 ```
 
-### 2. Secure Async Database Setup (`db.py`)
-The platform uses SQLAlchemy 2.0 with the `asyncpg` driver to ensure high-performance concurrent database transactions.
+## Before you start
 
-```python
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker
+Install the following tools:
 
-engine = create_async_engine(
-    SQLALCHEMY_DATABASE_URL, connect_args=connect_args, echo=False
-)
+- Python 3.11 or newer
+- Node.js and npm
+- A Google Gemini API key if you want real AI responses
 
-SessionLocal = sessionmaker(
-    bind=engine,
-    class_=AsyncSession,
-    autocommit=False,
-    autoflush=False
-)
+PostgreSQL is optional. The backend uses a local SQLite database when `DATABASE_URL` is not set.
 
-async def get_db():
-    async with SessionLocal() as db:
-        yield db
-```
+## Run the backend
 
-### 3. Resilient JSON Parsing
-LLMs occasionally hallucinate markdown blocks or trailing commas when requested to return JSON. The application uses `json_repair` to robustly catch and fix these errors, preventing silent data loss.
+Open a terminal in the project folder and move into the backend directory:
 
-```python
-try:
-    # Use json_repair here so streaming failures resolve smoothly
-    result = json_repair.loads(full_json)
-    
-    # Save the parsed evaluation and question directly to the database
-    async with SessionLocal() as bg_db:
-        # ... db commit logic ...
-except Exception as e:
-    logger.error(f"Error persisting stream to storage: {e}")
-```
-
----
-
-## 🐳 Running with Docker (Recommended)
-
-The easiest way to run the application (FastAPI + Vite) is via Docker Compose. The database is hosted externally (e.g. Render).
-
-1. Ensure Docker Desktop is running.
-2. In the `backend` folder, duplicate `.env.example` and rename it to `.env`. Fill in your secrets:
-   ```env
-   GEMINI_API_KEY=your_gemini_api_key_here
-   JWT_SECRET_KEY=a_secure_random_string
-
-   DATABASE_URL=postgresql+asyncpg://user:password@hostname.oregon-postgres.render.com/dbname
-   ```
-3. From the root directory containing `docker-compose.yml`, run:
-   ```bash
-   docker-compose up -d --build
-   ```
-4. Access the application:
-   - **Frontend UI**: `http://localhost:80`
-   - **Backend Swagger Docs**: `http://localhost:8000/docs`
-
----
-
-## 🚀 Local Development Guide (Without Docker)
-
-You need two terminals to run this application locally without Docker.
-
-### 1. Backend Server
-```bash
+```powershell
 cd backend
-
-# Create and activate virtual environment
 python -m venv venv
-.\venv\Scripts\activate
+```
 
-# Install dependencies
+Activate the virtual environment on Windows:
+
+```powershell
+.\venv\Scripts\Activate.ps1
+```
+
+On macOS or Linux, use:
+
+```bash
+source venv/bin/activate
+```
+
+Install the Python packages:
+
+```bash
 pip install -r requirements.txt
+```
 
-# Ensure your .env file has the correct Render DATABASE_URL 
-# DATABASE_URL=postgresql+asyncpg://user:password@hostname.render.com/dbname
+Copy `.env.example` to `.env`. On Windows PowerShell:
 
-# Run the FastAPI server in development mode
+```powershell
+Copy-Item .env.example .env
+```
+
+On macOS or Linux:
+
+```bash
+cp .env.example .env
+```
+
+Open `.env` and set the required values:
+
+```env
+GEMINI_API_KEY=your_gemini_api_key
+JWT_SECRET_KEY=use_a_long_random_secret
+
+# Optional: leave this out to use SQLite locally
+DATABASE_URL=postgresql+asyncpg://user:password@host/database
+```
+
+`JWT_SECRET_KEY` is required. `GEMINI_API_KEY` can be left empty when you only want to test the application with mock AI responses.
+
+Start the backend:
+
+```bash
 uvicorn app.main:app --reload
 ```
-*The API will be available at `http://localhost:8000`*
 
-### 2. Frontend React Vite Server
+The API will run at `http://127.0.0.1:8000`. Interactive API documentation is available at `http://127.0.0.1:8000/docs`.
+
+## Run the frontend
+
+Open a second terminal, move into the frontend directory, and install the packages:
+
 ```bash
 cd frontend
-
-# Install Node modules
 npm install
-
-# Start the Vite development server
 npm run dev
 ```
-*The App will be available at `http://localhost:5173`*
 
----
+Vite will print the local address in the terminal. It is usually `http://localhost:5173`.
 
-## 🔐 Security Features
-- **Strict CORS**: The API explicitly rejects cross-origin credentialed requests unless they originate from allowed domains.
-- **JWT Authentication**: Secure stateless token validation using `bcrypt` and HS256 signatures.
-- **Payload Constraints**: Max-length validations enforced via Pydantic on incoming prompts to prevent Token Exhaustion DoS attacks.
-- **Dependency Locking**: Exact dependency versions are pinned in `requirements.txt` to prevent supply chain breaks.
+The frontend connects to `http://127.0.0.1:8000` by default. To use a different backend address, create `frontend/.env` and add:
+
+```env
+VITE_API_URL=https://your-backend.example.com
+```
+
+Restart the Vite server after changing this value.
+
+## Useful commands
+
+Run the frontend linter:
+
+```bash
+cd frontend
+npm run lint
+```
+
+Create a production frontend build:
+
+```bash
+cd frontend
+npm run build
+```
+
+## Main API routes
+
+- `POST /api/auth/register` creates an account
+- `POST /api/auth/login` signs in and returns an access token
+- `POST /api/session/start` starts a new interview
+- `POST /api/session/chat` submits an answer and streams the next response
+- `GET /api/session/{session_id}/hint` requests a hint
+- `GET /api/session/{session_id}/report` creates the final report
+- `GET /api/session/user/history` returns the signed-in user's interview history
+
+All interview routes require a bearer token returned by the login or registration endpoint.
+
+## Notes
+
+- Keep `.env` private and never commit real API keys or database passwords.
+- Use a long, random value for `JWT_SECRET_KEY`.
+- SQLite is convenient for local testing. PostgreSQL is the better choice for a deployed application with multiple users.
+- The first backend start creates the required database tables automatically.
