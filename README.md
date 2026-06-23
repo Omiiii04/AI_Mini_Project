@@ -84,6 +84,14 @@ Install the Python packages:
 pip install -r requirements.txt
 ```
 
+`requirements.txt` is the generated dependency lockfile. It contains exact versions and package hashes, so do not edit it by hand. To add or update a backend dependency, edit `requirements.in` and regenerate the lock from the project root:
+
+```bash
+backend/venv/Scripts/uv pip compile backend/requirements.in --python-version 3.11 --universal --generate-hashes --no-emit-index-url --output-file backend/requirements.txt
+```
+
+On macOS or Linux, use `backend/venv/bin/uv` instead.
+
 Copy `.env.example` to `.env`. On Windows PowerShell:
 
 ```powershell
