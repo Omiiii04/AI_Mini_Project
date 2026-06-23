@@ -47,18 +47,19 @@ async def start_session(request: Request, payload: StartSessionRequest, db: Asyn
     return StartSessionResponse(session_id=session_id, first_question=first_q)
 
 @router.post("/chat")
-async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db), current_user: UserDB = Depends(get_current_user)):
-    result = await db.execute(select(SessionDB).filter(SessionDB.id == request.session_id, SessionDB.user_id == current_user.id))
+@limiter.limit("20/minute")
+async def chat(request: Request, payload: ChatRequest, db: AsyncSession = Depends(get_db), current_user: UserDB = Depends(get_current_user)):
+    result = await db.execute(select(SessionDB).filter(SessionDB.id == payload.session_id, SessionDB.user_id == current_user.id))
     session = result.scalars().first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found or forbidden")
         
-    result_msgs = await db.execute(select(MessageDB).filter(MessageDB.session_id == request.session_id).order_by(MessageDB.created_at))
+    result_msgs = await db.execute(select(MessageDB).filter(MessageDB.session_id == payload.session_id).order_by(MessageDB.created_at))
     messages = result_msgs.scalars().all()
     history = [{"role": m.role, "content": m.content} for m in messages if m.role in ["user", "assistant"]]
     
     # Save the user query to the database before the stream blocks
-    user_msg = MessageDB(session_id=request.session_id, role="user", content=request.message)
+    user_msg = MessageDB(session_id=payload.session_id, role="user", content=payload.message)
     db.add(user_msg)
     await db.commit()
 
@@ -68,8 +69,8 @@ async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db), current
             domain=session.domain,
             difficulty=session.difficulty,
             history=history,
-            user_answer=request.message,
-            time_spent=request.time_spent,
+            user_answer=payload.message,
+            time_spent=payload.time_spent,
             hints_used=session.hints_used or 0
         )
         
@@ -85,8 +86,8 @@ async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db), current
             # Create a localized background DB session for this generator
             from app.core.db import SessionLocal
             async with SessionLocal() as bg_db:
-                eval_msg = MessageDB(session_id=request.session_id, role="evaluation", content=json.dumps(result.get("evaluation", {})))
-                ast_msg = MessageDB(session_id=request.session_id, role="assistant", content=result.get("next_question", ""))
+                eval_msg = MessageDB(session_id=payload.session_id, role="evaluation", content=json.dumps(result.get("evaluation", {})))
+                ast_msg = MessageDB(session_id=payload.session_id, role="assistant", content=result.get("next_question", ""))
                 bg_db.add(eval_msg)
                 bg_db.add(ast_msg)
                 await bg_db.commit()
@@ -98,7 +99,8 @@ async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db), current
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 @router.get("/{session_id}/hint")
-async def get_hint(session_id: str, db: AsyncSession = Depends(get_db), current_user: UserDB = Depends(get_current_user)):
+@limiter.limit("10/minute")
+async def get_hint(request: Request, session_id: str, db: AsyncSession = Depends(get_db), current_user: UserDB = Depends(get_current_user)):
     result = await db.execute(select(SessionDB).filter(SessionDB.id == session_id, SessionDB.user_id == current_user.id))
     session = result.scalars().first()
     if not session:
@@ -117,7 +119,8 @@ async def get_hint(session_id: str, db: AsyncSession = Depends(get_db), current_
     return {"hint": hint_text, "hints_used": session.hints_used}
 
 @router.get("/{session_id}/report", response_model=ReportResponse)
-async def get_report(session_id: str, db: AsyncSession = Depends(get_db), current_user: UserDB = Depends(get_current_user)):
+@limiter.limit("5/minute")
+async def get_report(request: Request, session_id: str, db: AsyncSession = Depends(get_db), current_user: UserDB = Depends(get_current_user)):
     result = await db.execute(select(SessionDB).filter(SessionDB.id == session_id, SessionDB.user_id == current_user.id))
     session = result.scalars().first()
     if not session:
@@ -142,7 +145,8 @@ async def get_report(session_id: str, db: AsyncSession = Depends(get_db), curren
     return ReportResponse(**report)
 
 @router.get("/user/history")
-async def get_user_history(db: AsyncSession = Depends(get_db), current_user: UserDB = Depends(get_current_user)):
+@limiter.limit("30/minute")
+async def get_user_history(request: Request, db: AsyncSession = Depends(get_db), current_user: UserDB = Depends(get_current_user)):
     result = await db.execute(select(SessionDB).filter(SessionDB.user_id == current_user.id).order_by(SessionDB.created_at.desc()))
     sessions = result.scalars().all()
     results = []

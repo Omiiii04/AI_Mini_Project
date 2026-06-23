@@ -33,7 +33,8 @@ async def register_user(request: Request, user: UserCreate, db: AsyncSession = D
     return {"access_token": access_token, "token_type": "bearer"}
 
 @router.post("/login")
-async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)):
+@limiter.limit("10/minute")
+async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(UserDB).filter(UserDB.username == form_data.username))
     user = result.scalars().first()
     if not user or not security.verify_password(form_data.password, user.hashed_password):
