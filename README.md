@@ -1,180 +1,315 @@
 # AI Interview Preparation Chatbot
 
-This is a full-stack mock interview application. You can choose an interview topic and difficulty level, answer questions in a chat interface, ask for hints, and receive feedback after each answer. At the end of the interview, the application creates a performance report that can be downloaded as a PDF.
+Full-stack mock technical interview web application with automated Gemini AI evaluation and session performance report generation.
 
-The application uses Google Gemini to generate questions and feedback. If no Gemini API key is provided, the backend returns mock responses so the basic flow can still be tested.
+<!-- NEEDS INPUT: CI status badge - No CI pipeline config found in repository -->
+<!-- NEEDS INPUT: License badge - No LICENSE file present in repository -->
 
-## What you can do
+## Table of Contents
 
-- Create an account and sign in
-- Choose an interview topic, language, and difficulty level
-- Answer questions using text or speech input
-- Use the built-in code editor for programming answers
-- Ask for hints when you get stuck
-- Receive feedback on correctness, completeness, and clarity
-- Review previous interview sessions
-- Download the final report as a PDF
-- Switch between light and dark themes
+- [Overview](#overview)
+- [Architecture](#architecture)
+- [Features](#features)
+- [Tech Stack](#tech-stack)
+- [Prerequisites](#prerequisites)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Usage](#usage)
+- [Project Structure](#project-structure)
+- [Testing & Verification](#testing--verification)
+- [Deployment](#deployment)
+- [Contributing](#contributing)
+- [License](#license)
 
-## Technology used
+---
 
-The backend is built with FastAPI, SQLAlchemy, and Pydantic. It uses JWT tokens for authentication and supports SQLite for local development or PostgreSQL for deployment.
+## Overview
 
-The frontend is built with React and Vite. It also uses Monaco Editor for code input, React Markdown for formatted responses, and html2pdf.js for PDF exports.
+The AI Interview Preparation Chatbot allows job candidates to practice technical interviews across different domains, languages, and difficulty levels. Candidates answer questions via text or code input, receive incremental hints, and obtain immediate score breakdowns for correctness, completeness, and clarity. At the end of each session, the application generates a comprehensive evaluation report downloadable as a PDF.
 
-## Project structure
+---
 
-```text
-AI_Mini_Project/
-|-- backend/
-|   |-- app/
-|   |   |-- api/          # Authentication and interview routes
-|   |   |-- core/         # Database, security, logging, and rate limiting
-|   |   |-- models/       # SQLAlchemy database models
-|   |   |-- schemas/      # Request and response models
-|   |   `-- services/     # Gemini integration
-|   |-- .env.example
-|   `-- requirements.txt
-|-- frontend/
-|   |-- public/
-|   |-- src/
-|   |   |-- components/   # Screens and reusable UI components
-|   |   |-- hooks/        # Interview state and streaming logic
-|   |   |-- services/     # Backend API calls
-|   |   `-- styles/       # Global styles
-|   |-- package.json
-|   `-- vite.config.js
-`-- README.md
+## Architecture
+
+```mermaid
+graph TD
+    Client["React 19 Frontend (Vite)"]
+    API["FastAPI Backend (Uvicorn / Gunicorn)"]
+    DB[(SQLite / PostgreSQL)]
+    LLM["Google Gemini API (gemini-3-flash-preview)"]
+
+    Client -->|HTTP / SSE REST API| API
+    API -->|Async SQLAlchemy| DB
+    API -->|Async GenAI SDK| LLM
 ```
 
-## Before you start
+---
 
-Install the following tools:
+## Features
 
-- Python 3.11 or newer
-- Node.js and npm
-- A Google Gemini API key if you want real AI responses
+- **User Authentication**: Secure user registration and login using JWT bearer tokens (`PyJWT`) and password hashing (`bcrypt`).
+- **Configurable Interview Setup**: Select domain, programming language, and difficulty level (Beginner, Intermediate, Advanced).
+- **Interactive Chat Interface**: Dual input modes supporting standard text and code editing powered by Monaco Editor (`@monaco-editor/react`).
+- **Real-Time Evaluation Streaming**: Server-Sent Events (`text/event-stream`) deliver real-time feedback and upcoming questions.
+- **Progressive Hinting**: System provides up to 3 escalating hints per question with automated scoring deductions.
+- **Time Penalty Tracking**: Automatically flags and penalizes answers taking longer than 5 minutes (300 seconds).
+- **Session History & Analytics**: Tracks user performance across multiple interview sessions.
+- **PDF Report Generation**: Renders final evaluation summary with score breakdowns downloadable as PDF using `html2pdf.js`.
+- **Mock AI Mode**: Gracefully falls back to structured mock questions and feedback when `GEMINI_API_KEY` is not provided.
+- **API Rate Limiting**: Endpoint protection implemented using `slowapi`.
 
-PostgreSQL is optional. The backend uses a local SQLite database when `DATABASE_URL` is not set.
+---
 
-## Run the backend
+## Tech Stack
 
-Open a terminal in the project folder and move into the backend directory:
+### Backend
 
-```powershell
+- **Language**: Python 3.11+
+- **Framework**: FastAPI `>=0.110.0`
+- **ASGI Server**: Uvicorn `[standard]>=0.29.0`, Gunicorn `>=22.0.0`
+- **Database / ORM**: SQLAlchemy `>=2.0.29` (Async), `asyncpg>=0.29.0` (PostgreSQL), `aiosqlite>=0.20.0` (SQLite)
+- **AI Integration**: `google-genai>=0.3.0` (`gemini-3-flash-preview`)
+- **Authentication**: PyJWT `>=2.8.0`, `bcrypt>=4.1.2`
+- **Security & Utilities**: `slowapi>=0.1.9` (Rate limiting), `json-repair>=0.23.0`, `python-dotenv>=1.0.1`
+
+### Frontend
+
+- **Language**: JavaScript (ES Modules)
+- **Framework**: React `^19.2.5`
+- **Build Tool**: Vite `^8.0.10`
+- **Code Editor**: `@monaco-editor/react` `^4.7.0`
+- **Markdown Rendering**: `react-markdown` `^10.1.0`
+- **Icons**: `lucide-react` `^1.9.0`
+- **HTTP Client**: Axios `^1.15.2`
+- **PDF Export**: `html2pdf.js` `^0.14.0`
+- **Linter**: ESLint `^10.2.1`
+
+---
+
+## Prerequisites
+
+- **Python**: Version `3.11` or newer (3.11.9 recommended as specified in [backend/.python-version](file:///backend/.python-version)).
+- **Node.js**: Version `18.0` or newer.
+- **npm**: Package manager included with Node.js.
+- **Google Gemini API Key**: (Optional) Required for live AI generation. If omitted, the application operates in mock mode.
+
+---
+
+## Installation
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/Omiiii04/AI_Mini_Project.git
+cd AI_Mini_Project
+```
+
+### 2. Set up the backend
+
+```bash
 cd backend
 python -m venv venv
 ```
 
-Activate the virtual environment on Windows:
+Activate the virtual environment:
 
-```powershell
-.\venv\Scripts\Activate.ps1
-```
+- **Windows PowerShell**:
+  ```powershell
+  .\venv\Scripts\Activate.ps1
+  ```
+- **macOS / Linux**:
+  ```bash
+  source venv/bin/activate
+  ```
 
-On macOS or Linux, use:
-
-```bash
-source venv/bin/activate
-```
-
-Install the Python packages:
+Install dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-`requirements.txt` is the generated dependency lockfile. It contains exact versions and package hashes, so do not edit it by hand. To add or update a backend dependency, edit `requirements.in` and regenerate the lock from the project root:
+> **Note**: To modify dependencies, edit [backend/requirements.in](file:///backend/requirements.in) and recompile using `uv`:
+> ```bash
+> uv pip compile backend/requirements.in --python-version 3.11 --universal --generate-hashes --no-emit-index-url --output-file backend/requirements.txt
+> ```
 
-```bash
-backend/venv/Scripts/uv pip compile backend/requirements.in --python-version 3.11 --universal --generate-hashes --no-emit-index-url --output-file backend/requirements.txt
-```
+### 3. Set up the frontend
 
-On macOS or Linux, use `backend/venv/bin/uv` instead.
-
-Copy `.env.example` to `.env`. On Windows PowerShell:
-
-```powershell
-Copy-Item .env.example .env
-```
-
-On macOS or Linux:
-
-```bash
-cp .env.example .env
-```
-
-Open `.env` and set the required values:
-
-```env
-GEMINI_API_KEY=your_gemini_api_key
-JWT_SECRET_KEY=use_a_long_random_secret
-
-# Optional: leave this out to use SQLite locally
-DATABASE_URL=postgresql+asyncpg://user:password@host/database
-```
-
-`JWT_SECRET_KEY` is required. `GEMINI_API_KEY` can be left empty when you only want to test the application with mock AI responses.
-
-Start the backend:
-
-```bash
-uvicorn app.main:app --reload
-```
-
-The API will run at `http://127.0.0.1:8000`. Interactive API documentation is available at `http://127.0.0.1:8000/docs`.
-
-## Run the frontend
-
-Open a second terminal, move into the frontend directory, and install the packages:
+Open a new terminal window:
 
 ```bash
 cd frontend
 npm install
+```
+
+---
+
+## Configuration
+
+### Backend Environment Variables
+
+Copy the example environment file inside the [backend](file:///backend) directory:
+
+- **Windows PowerShell**:
+  ```powershell
+  Copy-Item .env.example .env
+  ```
+- **macOS / Linux**:
+  ```bash
+  cp .env.example .env
+  ```
+
+Configure the parameters in `backend/.env`:
+
+| Variable | Required | Default | Description |
+| :--- | :---: | :--- | :--- |
+| `JWT_SECRET_KEY` | **Yes** | None | Secret key used for signing JWT authentication tokens. The app will fail to start if this is missing. |
+| `GEMINI_API_KEY` | No | None | Google Gemini API key. If omitted, mock questions and evaluations are returned. |
+| `DATABASE_URL` | No | `sqlite+aiosqlite:///./interview.db` | Async SQLAlchemy database URL. Accepts SQLite or PostgreSQL (`postgresql+asyncpg://...`). |
+| `ALLOWED_ORIGINS` | No | `http://localhost:80,http://localhost:5173,...` | Comma-separated list of CORS origins allowed to access the backend API. |
+
+### Frontend Environment Variables
+
+Create `frontend/.env` (optional):
+
+| Variable | Required | Default | Description |
+| :--- | :---: | :--- | :--- |
+| `VITE_API_URL` | No | `http://127.0.0.1:8000` | Backend API base URL used by Axios and EventSource requests. |
+
+---
+
+## Usage
+
+### Running the Backend Server
+
+Ensure your Python virtual environment is activated, then run:
+
+```bash
+cd backend
+uvicorn app.main:app --reload
+```
+
+The FastAPI backend starts at `http://127.0.0.1:8000`.
+Interactive OpenAPI documentation is available at `http://127.0.0.1:8000/docs`.
+
+### Running the Frontend Server
+
+In a separate terminal, start the Vite development server:
+
+```bash
+cd frontend
 npm run dev
 ```
 
-Vite will print the local address in the terminal. It is usually `http://localhost:5173`.
+Access the web application at `http://localhost:5173`.
 
-The frontend connects to `http://127.0.0.1:8000` by default. To use a different backend address, create `frontend/.env` and add:
+### End-to-End Workflow
 
-```env
-VITE_API_URL=https://your-backend.example.com
+1. Navigate to `http://localhost:5173` and register a new account on the Auth screen.
+2. Select an interview domain (e.g., Data Structures & Algorithms, DBMS), programming language, and difficulty level.
+3. Complete the interview by responding to questions via text or code.
+4. Request hints when stuck or finish the session to generate the performance dashboard.
+5. Download the session report as a PDF.
+
+---
+
+## Project Structure
+
+```text
+AI_Mini_Project/
+├── backend/
+│   ├── app/
+│   │   ├── api/          # FastAPI authentication, dependency injection, and session routes
+│   │   ├── core/         # Database connection, security JWT, logger, and rate limiter
+│   │   ├── models/       # SQLAlchemy database tables (UserDB, SessionDB, MessageDB)
+│   │   ├── schemas/      # Pydantic request/response schemas
+│   │   └── services/     # Gemini API integration and fallback mock generator logic
+│   │   └── main.py       # ASGI entry point, lifespan table creation, and middleware
+│   ├── .env.example      # Sample backend environment configuration
+│   ├── .python-version   # Recommended Python runtime version (3.11.9)
+│   ├── requirements.in   # Unpinned top-level dependency declarations
+│   └── requirements.txt  # Pinned dependency lockfile with package hashes
+├── frontend/
+│   ├── public/           # Static asset files
+│   ├── src/
+│   │   ├── components/   # UI views split into chat, layout, setup, and summary modules
+│   │   ├── hooks/        # Interview state management and SSE response handler hook
+│   │   ├── services/     # Axios client configuration and authentication interceptor
+│   │   ├── styles/       # Application stylesheet definitions
+│   │   ├── App.jsx       # Root React component managing navigation state
+│   │   └── main.jsx      # React DOM entry point
+│   ├── package.json      # Frontend package manifest and script declarations
+│   ├── package-lock.json # Locked frontend dependency tree
+│   └── vite.config.js    # Vite build and plugin configuration
+└── README.md
 ```
 
-Restart the Vite server after changing this value.
+---
 
-## Useful commands
+## Testing & Verification
 
-Run the frontend linter:
+### Frontend Verification
+
+Run ESLint to check for syntax and code formatting issues:
 
 ```bash
 cd frontend
 npm run lint
 ```
 
-Create a production frontend build:
+Build the production frontend assets:
 
 ```bash
 cd frontend
 npm run build
 ```
 
-## Main API routes
+### Backend Verification
 
-- `POST /api/auth/register` creates an account
-- `POST /api/auth/login` signs in and returns an access token
-- `POST /api/session/start` starts a new interview
-- `POST /api/session/chat` submits an answer and streams the next response
-- `GET /api/session/{session_id}/hint` requests a hint
-- `GET /api/session/{session_id}/report` creates the final report
-- `GET /api/session/user/history` returns the signed-in user's interview history
+Ensure all dependencies are installed and test importing the main module:
 
-All interview routes require a bearer token returned by the login or registration endpoint.
+```bash
+cd backend
+python -c "import app.main; print('Backend loaded successfully')"
+```
 
-## Notes
+> **Note**: Automated unit testing frameworks (e.g., `pytest` or `vitest`) are not currently configured in this repository.
 
-- Keep `.env` private and never commit real API keys or database passwords.
-- Use a long, random value for `JWT_SECRET_KEY`.
-- SQLite is convenient for local testing. PostgreSQL is the better choice for a deployed application with multiple users.
-- The first backend start creates the required database tables automatically.
+---
+
+## Deployment
+
+### Backend Deployment
+
+The database module in [backend/app/core/db.py](file:///backend/app/core/db.py#L12-L16) includes logic to enable `ssl=require` when connected to non-SQLite database URLs (such as Render PostgreSQL).
+
+To start a production server using Gunicorn:
+
+```bash
+cd backend
+gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000
+```
+
+### Frontend Deployment
+
+Build production static assets using Vite:
+
+```bash
+cd frontend
+npm run build
+```
+
+The compiled output will be generated in `frontend/dist/` and can be served via Nginx, Vercel, Netlify, or static web host.
+
+---
+
+## Contributing
+
+Contributions are welcome. Please ensure that all modified files pass the frontend linter (`npm run lint`) and that backend imports initialize without missing environment dependencies.
+
+---
+
+## License
+
+<!-- NEEDS INPUT: License type and LICENSE file missing in repository -->
+This project does not currently contain an explicit `LICENSE` file. All rights reserved by the project owners.
